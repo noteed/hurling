@@ -1,0 +1,23 @@
+name:                hurling
+version:             0.0.0
+Cabal-Version:       >= 1.8
+synopsis:            A Humming worker running Docker command
+description:         A Humming worker running Docker command
+category:            Development
+license:             BSD3
+license-file:        LICENSE
+author:              Vo Minh Thu
+maintainer:          thu@hypered.io
+homepage:            http://noteed.com/hurling
+bug-reports:         https://github.com/noteed/hurling/issues
+build-type:          Simple
+
+source-repository head
+  type: git
+  location: https://github.com/noteed/hurling
+
+executable hurling
+  hs-source-dirs:      bin
+  main-is:             hurling.hs
+  build-depends:       base == 4.*
+  ghc-options:         -Wall
