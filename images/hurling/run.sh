@@ -13,5 +13,7 @@ hurling --help
 
 DB="dbname=docker user=docker password=docker host=127.0.0.1"
 humming create --database-url "$DB"
-humming enqueue --database-url "$DB" --queue hurling --method play --arguments '{}'
-hurling work --database-url "$DB" --once
+humming enqueue --database-url "$DB" --queue hurling --method play \
+  --arguments '{"image": "ubuntu:12.04", "command": ["echo", "hello"]}'
+ID=$(hurling work --database-url "$DB" --once)
+sudo docker logs ${ID}

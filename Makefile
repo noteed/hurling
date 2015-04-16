@@ -10,6 +10,10 @@ images/hurling/hurling: dist/build/hurling/hurling
 images/hurling/humming: ../humming/dist/build/humming/humming
 	cp $< $@
 
-.hurling_touched: images/hurling/Dockerfile images/hurling/hurling images/hurling/humming
+.hurling_touched: \
+  images/hurling/Dockerfile \
+  images/hurling/hurling \
+  images/hurling/humming \
+  images/hurling/run.sh
 	docker build -t noteed/hurling images/hurling
 	touch .hurling_touched

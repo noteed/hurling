@@ -19,9 +19,12 @@ source-repository head
 executable hurling
   hs-source-dirs:      bin
   main-is:             hurling.hs
-  build-depends:       base == 4.*,
+  build-depends:       aeson == 0.6.*,
+                       base == 4.*,
                        bytestring > 0.9 && < 0.11,
                        cmdargs == 0.9.*,
+                       filepath >= 1.2 && < 1.4,
                        humming,
-                       postgresql-simple >= 0.2 && < 0.4
+                       postgresql-simple >= 0.2 && < 0.4,
+                       process == 1.1.*
   ghc-options:         -Wall
