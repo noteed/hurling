@@ -7,12 +7,14 @@ import Control.Monad (mzero)
 import Data.Aeson (fromJSON, Value(Object), Result(..), FromJSON(..), (.:))
 import Data.ByteString (ByteString)
 import Data.ByteString.Char8 (pack)
+import Data.List (isPrefixOf)
 import Data.Version (showVersion)
 import Database.PostgreSQL.Simple
 import Paths_hurling (version)
 import System.Console.CmdArgs.Implicit
 import System.Exit (ExitCode(..))
 import System.FilePath ((</>))
+import System.IO (hFlush, stdout)
 import System.Process (readProcessWithExitCode)
 
 import qualified Database.PostgreSQL.Queue as Q
@@ -25,7 +27,7 @@ main :: IO ()
 main = (runCmd =<<) $ cmdArgs $
   modes
     [ cmdWork
-    , cmdDummy
+    , cmdGitHubHooks
     ]
   &= summary versionString
   &= program "hurling"
@@ -42,7 +44,9 @@ data Cmd =
     , cmdQueueName :: String
     , cmdWorkOnce :: Bool
     }
-  | Dummy
+  | GitHubHooks
+    { cmdDatabaseUrl :: String
+    }
   deriving (Data, Typeable)
 
 -- | Create a 'Work' command.
@@ -64,12 +68,16 @@ cmdWork = Work
     &= explicit
     &= name "work"
 
--- | Create a 'Dummy' command.
-cmdDummy :: Cmd
-cmdDummy = Dummy
-    &= help "Dummy command."
+-- | Create a 'GitHubHooks' command.
+cmdGitHubHooks :: Cmd
+cmdGitHubHooks = GitHubHooks
+  { cmdDatabaseUrl = def
     &= explicit
-    &= name "dummy"
+    &= name "database-url"
+    &= help "Database URL."
+  } &= help "Process GitHub Hooks `push` event."
+    &= explicit
+    &= name "ghhooks"
 
 -- | Run a sub-command.
 runCmd :: Cmd -> IO ()
@@ -86,14 +94,24 @@ runCmd Work{..} = do
     else Q.start con w
   close con
 
-runCmd Dummy{..} = putStrLn "Hurr hurr."
+runCmd GitHubHooks{..} = do
+  con <- connectPostgreSQL $ pack cmdDatabaseUrl
+  _ <- execute_ con "SET application_name='hurling'"
+  w_ <- Q.defaultWorker
+  let w = w_
+        { Q.workerQueue = Q.Queue "ghhooks"
+        , Q.workerHandler = githubHooksHandler
+        }
+  Q.start con w
+  close con
 
 ----------------------------------------------------------------------
 -- Implementation
 ----------------------------------------------------------------------
 
+-- | Handler for the HORDE commands.
 handler :: ByteString -> Value -> IO ()
-handler _ value =
+handler _ value = do
   case fromJSON value of
     Error err -> putStrLn err
     Success s -> do
@@ -101,6 +119,7 @@ handler _ value =
       case e of
         Left err -> putStrLn err
         Right i -> putStrLn i
+  hFlush stdout
 
 runContainer :: String -> Service -> IO (Either String String)
 runContainer hordeName Service{..} = do
@@ -119,8 +138,6 @@ runContainer hordeName Service{..} = do
   case code of
     ExitFailure _ -> return $ Left $ "Error starting service: " ++ out ++ err
     ExitSuccess -> return . Right . head $ words out -- TODO Might explode.
-
-type Hostname = String
 
 -- | A service describes a particular invokation of a Docker image.
 data Service = Service
@@ -153,3 +170,76 @@ defaultService = Service
   , serviceBindDirectories = []
   , servicePrivileged = False
   }
+
+-- | Handler for the GitHub Hooks `push` events.
+githubHooksHandler :: ByteString -> Value -> IO ()
+githubHooksHandler "push" value = do
+  case fromJSON value of
+    Error err -> putStrLn err
+    Success s -> do
+      e <- runBuildContainer s
+      case e of
+        Left err -> putStrLn err
+        Right i -> putStrLn i
+  hFlush stdout
+
+githubHooksHandler _ _ = do
+  putStrLn "GitHub Hooks handler: not a `push` event."
+  hFlush stdout
+
+runBuildContainer :: Push -> IO (Either String String)
+runBuildContainer Push{..} = do
+  if "refs/heads/" `isPrefixOf` pushRef
+    then do
+      (code, out, err) <- readProcessWithExitCode "sudo"
+        ([ "docker"
+        , "run"
+        , "-d"
+        , "-v", "/var/run/docker.sock:/var/run/docker.sock"
+        , "-v", "/secrets/github-deploy-ssh:/home/worker/.ssh"
+        , "images.reesd.com/reesd/builder"
+        , "/home/worker/checkout-and-build.sh"
+        , repoSshUrl pushRepository
+        , repoName pushRepository ++ ".git"
+        , drop (length ("refs/heads/" :: String)) pushRef
+        ])
+        ""
+      case code of
+        ExitFailure _ -> return $ Left $ "Error starting service: " ++ out ++ err
+        ExitSuccess -> return . Right . head $ words out -- TODO Might explode.
+
+    else return $ Left $ "Can't parse ref " ++ pushRef ++ "."
+
+-- | Represent a (simplified) GitHub Hooks `push` event.
+data Push = Push
+  { pushRef :: String
+  -- ^ E.g. "refs/heads/master" for the branch "master".
+  , pushRepository :: Repository
+  }
+  deriving Show
+
+data Repository = Repository
+  { repoName :: String
+  , repoSshUrl :: String
+  }
+  deriving Show
+
+instance FromJSON Push where
+  parseJSON (Object v) = do
+    ref <- v .: "ref"
+    repo <- v .: "repository"
+    return Push
+      { pushRef = ref
+      , pushRepository = repo
+      }
+  parseJSON _ = mzero
+
+instance FromJSON Repository where
+  parseJSON (Object v) = do
+    name' <- v .: "name"
+    sshUrl <- v .: "ssh_url"
+    return Repository
+      { repoName = name'
+      , repoSshUrl = sshUrl
+      }
+  parseJSON _ = mzero
