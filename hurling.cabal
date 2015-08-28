@@ -1,5 +1,5 @@
 name:                hurling
-version:             0.0.0
+version:             0.0.1
 Cabal-Version:       >= 1.8
 synopsis:            A Humming worker running Docker command
 description:         A Humming worker running Docker command
@@ -16,15 +16,22 @@ source-repository head
   type: git
   location: https://github.com/noteed/hurling
 
-executable hurling
-  hs-source-dirs:      bin
-  main-is:             hurling.hs
+library
   build-depends:       aeson,
                        base == 4.*,
                        bytestring,
-                       cmdargs,
                        filepath,
-                       humming,
-                       postgresql-simple,
                        process
+  exposed-modules:     Hurling.Handlers
+  ghc-options:         -Wall
+
+executable hurling
+  hs-source-dirs:      bin
+  main-is:             hurling.hs
+  build-depends:       base == 4.*,
+                       bytestring,
+                       cmdargs,
+                       humming,
+                       hurling,
+                       postgresql-simple
   ghc-options:         -Wall
