@@ -13,8 +13,8 @@ import System.IO (hFlush, stdout)
 import System.Process (readProcessWithExitCode)
 
 -- | Handler for the HORDE commands.
-handler :: ByteString -> Value -> IO ()
-handler _ value = do
+handler :: Int -> ByteString -> Value -> IO ()
+handler _ _ value = do
   case fromJSON value of
     Error err -> putStrLn err
     Success s -> do
@@ -75,8 +75,8 @@ defaultService = Service
   }
 
 -- | Handler for the GitHub Hooks `push` events.
-githubHooksHandler :: ByteString -> Value -> IO ()
-githubHooksHandler "push" value = do
+githubHooksHandler :: Int -> ByteString -> Value -> IO ()
+githubHooksHandler _ "push" value = do
   case fromJSON value of
     Error err -> putStrLn err
     Success s -> do
@@ -86,7 +86,7 @@ githubHooksHandler "push" value = do
         Right i -> putStrLn i
   hFlush stdout
 
-githubHooksHandler _ _ = do
+githubHooksHandler _ _ _ = do
   putStrLn "GitHub Hooks handler: not a `push` event."
   hFlush stdout
 

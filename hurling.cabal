@@ -1,5 +1,5 @@
 name:                hurling
-version:             0.0.1
+version:             0.0.2
 Cabal-Version:       >= 1.8
 synopsis:            A Humming worker running Docker command
 description:         A Humming worker running Docker command
@@ -31,7 +31,7 @@ executable hurling
   build-depends:       base == 4.*,
                        bytestring,
                        cmdargs,
-                       humming,
+                       humming >= 0.4,
                        hurling,
                        postgresql-simple
   ghc-options:         -Wall
