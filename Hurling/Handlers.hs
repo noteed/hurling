@@ -4,7 +4,9 @@
 module Hurling.Handlers where
 
 import Control.Monad (mzero)
-import Data.Aeson (fromJSON, Value(Object), Result(..), FromJSON(..), (.:))
+import Data.Aeson
+  ( fromJSON, object, Value(Object), Result(..), FromJSON(..), ToJSON(..), (.:)
+  , (.=) )
 import Data.ByteString (ByteString)
 import Data.List (isPrefixOf)
 import System.Exit (ExitCode(..))
@@ -123,6 +125,7 @@ data Push = Push
 
 data Repository = Repository
   { repoName :: String
+  , repoFullName :: String
   , repoSshUrl :: String
   }
   deriving Show
@@ -140,9 +143,24 @@ instance FromJSON Push where
 instance FromJSON Repository where
   parseJSON (Object v) = do
     name' <- v .: "name"
+    fullname <- v .: "full_name"
     sshUrl <- v .: "ssh_url"
     return Repository
       { repoName = name'
+      , repoFullName = fullname
       , repoSshUrl = sshUrl
       }
   parseJSON _ = mzero
+
+instance ToJSON Push where
+  toJSON Push{..} = object
+    [ "ref" .= pushRef
+    , "repository" .= toJSON pushRepository
+    ]
+
+instance ToJSON Repository where
+  toJSON Repository{..} = object
+    [ "name" .= repoName
+    , "full_name" .= repoFullName
+    , "ssh_url" .= repoSshUrl
+    ]
