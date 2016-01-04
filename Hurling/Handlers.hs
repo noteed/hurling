@@ -116,6 +116,7 @@ runBuildContainer Push{..} = do
     else return $ Left $ "Can't parse ref " ++ pushRef ++ "."
 
 -- | Represent a (simplified) GitHub Hooks `push` event.
+-- In practice, this it can be considered as a `docker build` command.
 data Push = Push
   { pushRef :: String
   -- ^ E.g. "refs/heads/master" for the branch "master".
@@ -163,4 +164,42 @@ instance ToJSON Repository where
     [ "name" .= repoName
     , "full_name" .= repoFullName
     , "ssh_url" .= repoSshUrl
+    ]
+
+-- | Represent a `docker run` command.
+data Run = Run
+  { runImage :: String
+  , runCommand :: [String]
+  , runBindDaemonSocket :: Bool
+  -- ^ Expose the /var/run/docker.sock to the container ?
+  , runBindDirectories :: [(String, String)]
+  -- ^ Directories to share with the host.
+  , runPrivileged :: Bool
+  -- ^ Whether the run uses "--privileged".
+  }
+  deriving Show
+
+instance FromJSON Run where
+  parseJSON (Object v) = do
+    image <- v .: "image"
+    command <- v .: "command"
+    daemonSocket <- v .: "bind-daemon-socket"
+    bindDirectories <- v .: "bind-directories"
+    privileged <- v.: "privileged"
+    return Run
+      { runImage = image
+      , runCommand = command
+      , runBindDaemonSocket = daemonSocket
+      , runBindDirectories = bindDirectories
+      , runPrivileged = privileged
+      }
+  parseJSON _ = mzero
+
+instance ToJSON Run where
+  toJSON Run{..} = object
+    [ "image" .= runImage
+    , "command" .= runCommand
+    , "bind-daemon-socket" .= runBindDaemonSocket
+    , "bind-directories" .= runBindDirectories
+    , "privileged" .= runPrivileged
     ]
