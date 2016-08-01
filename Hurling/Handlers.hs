@@ -6,9 +6,9 @@ module Hurling.Handlers where
 import Control.Monad (mzero)
 import Data.Aeson
   ( fromJSON, object, Value(Object), Result(..), FromJSON(..), ToJSON(..), (.:)
-  , (.=) )
+  , (.:?), (.=) )
 import Data.ByteString (ByteString)
-import Data.List (isPrefixOf)
+import Data.List (isPrefixOf, nub)
 import System.Exit (ExitCode(..))
 import System.FilePath ((</>))
 import System.IO (hFlush, stdout)
@@ -121,6 +121,7 @@ data Push = Push
   { pushRef :: String
   -- ^ E.g. "refs/heads/master" for the branch "master".
   , pushRepository :: Repository
+  , pushCommits :: [Commit]
   }
   deriving Show
 
@@ -131,13 +132,23 @@ data Repository = Repository
   }
   deriving Show
 
+data Commit = Commit
+  { commitId :: String
+  , commitAdded :: [String]
+  , commitRemoved :: [String]
+  , commitModified :: [String]
+  }
+  deriving Show
+
 instance FromJSON Push where
   parseJSON (Object v) = do
     ref <- v .: "ref"
     repo <- v .: "repository"
+    commits <- v .: "commits"
     return Push
       { pushRef = ref
       , pushRepository = repo
+      , pushCommits = commits
       }
   parseJSON _ = mzero
 
@@ -153,10 +164,25 @@ instance FromJSON Repository where
       }
   parseJSON _ = mzero
 
+instance FromJSON Commit where
+  parseJSON (Object v) = do
+    id' <- v .: "id"
+    added <- v .: "added"
+    removed <- v .: "removed"
+    modified <- v .: "modified"
+    return Commit
+      { commitId = id'
+      , commitAdded = added
+      , commitRemoved = removed
+      , commitModified = modified
+      }
+  parseJSON _ = mzero
+
 instance ToJSON Push where
   toJSON Push{..} = object
     [ "ref" .= pushRef
     , "repository" .= toJSON pushRepository
+    , "commits" .= toJSON pushCommits
     ]
 
 instance ToJSON Repository where
@@ -165,6 +191,18 @@ instance ToJSON Repository where
     , "full_name" .= repoFullName
     , "ssh_url" .= repoSshUrl
     ]
+
+instance ToJSON Commit where
+  toJSON Commit{..} = object
+    [ "id" .= commitId
+    , "added" .= commitAdded
+    , "removed" .= commitRemoved
+    , "modified" .= commitModified
+    ]
+
+-- | Return all files added, removed or modified in this push.
+pushTouchedFiles :: Push -> [String]
+pushTouchedFiles Push{..} = nub (concatMap (flip concatMap pushCommits) [commitAdded, commitRemoved, commitModified])
 
 -- | Represent a `docker run` command.
 data Run = Run
@@ -176,6 +214,8 @@ data Run = Run
   -- ^ Directories to share with the host.
   , runPrivileged :: Bool
   -- ^ Whether the run uses "--privileged".
+  , runTryTag :: Maybe String
+  -- ^ Try using that tag before fallbacking to `runImage`.
   }
   deriving Show
 
@@ -183,23 +223,26 @@ instance FromJSON Run where
   parseJSON (Object v) = do
     image <- v .: "image"
     command <- v .: "command"
-    daemonSocket <- v .: "bind-daemon-socket"
-    bindDirectories <- v .: "bind-directories"
-    privileged <- v.: "privileged"
+    daemonSocket <- v .:? "bind-daemon-socket"
+    bindDirectories <- v .:? "bind-directories"
+    privileged <- v.:? "privileged"
+    tryTag <- v.:? "try-tag"
     return Run
       { runImage = image
       , runCommand = command
-      , runBindDaemonSocket = daemonSocket
-      , runBindDirectories = bindDirectories
-      , runPrivileged = privileged
+      , runBindDaemonSocket = maybe False id daemonSocket
+      , runBindDirectories = maybe [] id bindDirectories
+      , runPrivileged = maybe False id privileged
+      , runTryTag = tryTag
       }
   parseJSON _ = mzero
 
 instance ToJSON Run where
-  toJSON Run{..} = object
+  toJSON Run{..} = object $
     [ "image" .= runImage
     , "command" .= runCommand
     , "bind-daemon-socket" .= runBindDaemonSocket
     , "bind-directories" .= runBindDirectories
     , "privileged" .= runPrivileged
     ]
+    ++ (maybe [] (\t -> ["try-tag" .= t]) runTryTag)
