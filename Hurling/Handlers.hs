@@ -222,14 +222,14 @@ data Run = Run
 instance FromJSON Run where
   parseJSON (Object v) = do
     image <- v .: "image"
-    command <- v .: "command"
+    command <- v .:? "command"
     daemonSocket <- v .:? "bind-daemon-socket"
     bindDirectories <- v .:? "bind-directories"
     privileged <- v.:? "privileged"
     tryTag <- v.:? "try-tag"
     return Run
       { runImage = image
-      , runCommand = command
+      , runCommand = maybe [] id command
       , runBindDaemonSocket = maybe False id daemonSocket
       , runBindDirectories = maybe [] id bindDirectories
       , runPrivileged = maybe False id privileged
